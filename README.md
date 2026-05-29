@@ -1,5 +1,7 @@
 <p align="center">
-  <img src="assets/images/logo.png" alt="Sanchita Logo" width="120" height="120"/>
+  <img src="assets/branding/sanchita-logo.png" alt="Sanchita Logo" width="120" height="120"/>
+  
+  <!-- https://github.com/Avishekdevnath/Sachita/blob/main/assets/branding/sanchita-logo.png -->
 </p>
 
 <h1 align="center">Sanchita</h1>
