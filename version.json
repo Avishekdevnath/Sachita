@@ -1,8 +1,6 @@
-git branch -M main
-git remote add origin https://github.com/Avishekdevnath/Sachita.git
-git push -u origin main{
-  "latest_version": "1.0.0",
-  "min_required_version": "1.0.0",
-  "apk_url": "https://github.com/Avishekdevnath/Sachita/releases/download/v1.0.0/sanchita.apk",
-  "release_notes": "Initial release"
+{
+  "latest_version": "1.0.2",
+  "min_required_version": "1.0.2",
+  "apk_url": "https://github.com/Avishekdevnath/Sachita/releases/download/v1.0.2/sanchita.apk",
+  "release_notes": "Release v1.0.2"
 }
