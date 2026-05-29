@@ -1,0 +1,170 @@
+# ============================================================================
+# Sanchita Flutter App - Git Ignore File
+# ============================================================================
+
+# Flutter build and dependencies
+# ============================================================================
+build/
+.packages
+.pub-cache/
+.pub/
+.dart_tool/
+# pubspec.lock intentionally committed for reproducible builds
+.flutter-plugins
+.flutter-plugins-dependencies
+coverage/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+app.*.symbols
+app.*.map.json
+
+# Android specific
+# ============================================================================
+/android/app/debug/
+/android/app/profile/
+/android/app/release/
+android/.gradle/
+android/.idea/
+android/local.properties
+*.jks
+*.keystore
+android/app/key.properties
+android/key.properties
+
+# iOS specific
+# ============================================================================
+ios/Flutter/Flutter.podspec
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.xcframework
+ios/Flutter/generated.xcconfig
+ios/Flutter/ephemeral/
+ios/Podfile.lock
+ios/.symlinks/
+ios/Flutter/flutter_export_environment.sh
+ios/Runner.xcworkspace/xcshareddata/
+
+# Release/Build artifacts
+# ============================================================================
+*.apk
+*.apk.sha256
+*.aab
+*.ipa
+*.app
+*.exe
+*.zip
+releases/*.apk
+releases/*.sha256
+
+# Security & Credentials - NEVER COMMIT THESE
+# ============================================================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+secrets/
+credentials/
+serviceAccountKey.json
+sanchita-release.jks
+
+# Documentation - all internal docs/guides (except README.md)
+# ============================================================================
+guide/
+docs/
+*.md
+!README.md
+
+# Cache files and IDE
+# ============================================================================
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+.code-workspace
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local environment
+# ============================================================================
+local.properties
+.gradle/
+.java-version
+.ruby-version
+.ruby-gemset
+
+# Temporary and backup files
+# ============================================================================
+*.tmp
+*.temp
+*.bak
+*.backup
+*~
+.~*
+*.swo
+*.swn
+.#*
+#*#
+
+# OS-specific files
+# ============================================================================
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Archive files
+# ============================================================================
+*.tar
+*.tar.gz
+*.rar
+*.7z
+*.iso
+*.dmg
+
+# Node modules (for build scripts)
+# ============================================================================
+node_modules/
+package-lock.json
+yarn.lock
+
+# Test coverage
+# ============================================================================
+.nyc_output/
+lcov.info
+
+# ============================================================================
+# EXCEPTIONS: Files that SHOULD be committed
+# ============================================================================
+!README.md
+!.gitkeep
+!.gitignore
+!.github/
+!pubspec.yaml
+!analysis_options.yaml

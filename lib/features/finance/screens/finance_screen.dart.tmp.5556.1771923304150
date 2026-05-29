@@ -1,0 +1,646 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+
+import 'package:sanchita/core/constants/route_paths.dart';
+import 'package:sanchita/core/theme/app_design_tokens.dart';
+import 'package:sanchita/features/finance/models/transaction_model.dart';
+import 'package:sanchita/features/finance/providers/finance_provider.dart';
+import 'package:sanchita/features/finance/utils/finance_input_utils.dart';
+import 'package:sanchita/features/finance/widgets/finance_balance_card.dart';
+import 'package:sanchita/features/finance/widgets/finance_composer_card.dart';
+import 'package:sanchita/features/finance/widgets/finance_empty_states.dart';
+import 'package:sanchita/features/finance/widgets/finance_header_bar.dart';
+import 'package:sanchita/features/finance/widgets/finance_transaction_section_list.dart';
+import 'package:sanchita/features/settings/providers/settings_provider.dart';
+import 'package:sanchita/shared/widgets/app_modal_sheet.dart';
+import 'package:sanchita/shared/widgets/enhanced_card.dart';
+import 'package:sanchita/shared/widgets/money_amount_text.dart';
+import 'package:sanchita/shared/widgets/skeleton_loader.dart';
+
+enum _FinanceMenuAction { summary, budget, recurring }
+
+class FinanceScreen extends ConsumerStatefulWidget {
+  const FinanceScreen({super.key});
+
+  @override
+  ConsumerState<FinanceScreen> createState() => _FinanceScreenState();
+}
+
+class _FinanceScreenState extends ConsumerState<FinanceScreen> {
+  final TextEditingController _amountController = TextEditingController();
+  final TextEditingController _noteController = TextEditingController();
+  final FocusNode _amountFocusNode = FocusNode();
+  final Map<String, String> _lastUsedNoteByType = <String, String>{};
+  final Map<String, String> _lastUsedCategoryByType = <String, String>{};
+
+  FinanceState? _lastKnownState;
+  DateTime _composerDate = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    // OPTIMIZATION: Removed text controller listeners that caused full screen rebuilds.
+    // Form state updates now only rebuild the modal (via setSheetState), not the main screen.
+  }
+
+  String _formatAmount({required int paisa, required String currencySymbol}) {
+    return FinanceInputUtils.formatFromPaisa(
+      paisa: paisa,
+      currencySymbol: currencySymbol,
+    );
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _noteController.dispose();
+    _amountFocusNode.dispose();
+    super.dispose();
+  }
+
+  int? _parseToPaisa(String raw) {
+    final localeCode = Localizations.localeOf(context).toLanguageTag();
+    return FinanceInputUtils.parseAmountToPaisa(
+      raw,
+      localeCode: localeCode,
+    );
+  }
+
+  Future<void> _submitEntry(FinanceState state) async {
+    final selectedCategory = state.selectedCategory;
+    final amountPaisa = _parseToPaisa(_amountController.text);
+    if (amountPaisa == null || amountPaisa <= 0 || selectedCategory == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter valid amount and select a category.'),
+        ),
+      );
+      return;
+    }
+
+    await ref.read(financeProvider.notifier).addTransaction(
+      amountPaisa: amountPaisa,
+      categoryId: selectedCategory.id,
+      note: _noteController.text,
+      date: _composerDate,
+    );
+
+    _lastUsedCategoryByType[state.activeType] = selectedCategory.id;
+    final note = _noteController.text.trim();
+    if (note.isNotEmpty) {
+      _lastUsedNoteByType[state.activeType] = note;
+    }
+
+    _amountController.clear();
+    _noteController.clear();
+
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  bool _canSubmitEntry(FinanceState state) {
+    final amountPaisa = _parseToPaisa(_amountController.text);
+    if (amountPaisa == null || amountPaisa <= 0) {
+      return false;
+    }
+    return state.selectedCategory != null;
+  }
+
+  String? _amountValidationMessage() {
+    final raw = _amountController.text.trim();
+    if (raw.isEmpty) {
+      return null;
+    }
+
+    final amountPaisa = _parseToPaisa(raw);
+    if (amountPaisa == null) {
+      return 'Invalid amount format.';
+    }
+
+    if (amountPaisa <= 0) {
+      return 'Amount must be greater than zero.';
+    }
+
+    return null;
+  }
+
+  Future<void> _pickComposerDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _composerDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 3650)),
+    );
+
+    if (selected == null) {
+      return;
+    }
+
+    setState(() {
+      _composerDate = selected;
+    });
+  }
+
+  void _setComposerToday() {
+    setState(() {
+      final now = DateTime.now();
+      _composerDate = DateTime(now.year, now.month, now.day);
+    });
+  }
+
+  void _reuseLastNoteForType(String activeType) {
+    final note = _lastUsedNoteByType[activeType];
+    if (note == null || note.trim().isEmpty) {
+      return;
+    }
+
+    _noteController.text = note;
+    _noteController.selection = TextSelection.fromPosition(
+      TextPosition(offset: _noteController.text.length),
+    );
+  }
+
+  Future<void> _changeTypeWithSessionMemory(String type) async {
+    await ref.read(financeProvider.notifier).changeType(type);
+    if (!mounted) {
+      return;
+    }
+
+    final stateAfterTypeChange = ref.read(financeProvider).asData?.value;
+    if (stateAfterTypeChange == null) {
+      return;
+    }
+
+    final rememberedCategoryId = _lastUsedCategoryByType[type];
+    if (rememberedCategoryId != null) {
+      for (final category in stateAfterTypeChange.categories) {
+        if (category.id == rememberedCategoryId) {
+          ref.read(financeProvider.notifier).selectCategory(rememberedCategoryId);
+          break;
+        }
+      }
+    }
+
+    if (_noteController.text.trim().isEmpty) {
+      final rememberedNote = _lastUsedNoteByType[type];
+      if (rememberedNote != null && rememberedNote.trim().isNotEmpty) {
+        _noteController.text = rememberedNote;
+        _noteController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _noteController.text.length),
+        );
+      }
+    }
+  }
+
+  Future<bool> _confirmDelete(TransactionModel item) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete transaction?'),
+          content: Text(
+            item.note.isEmpty
+                ? 'This transaction will be removed from active history.'
+                : 'Delete "${item.note}" from active history?',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(false);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop(true);
+              },
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return result == true;
+  }
+
+  /// Build category ID → name map for efficient lookup (O(1) instead of O(n))
+  Map<String, String> _buildCategoryMap(FinanceState state) {
+    return {
+      for (final category in state.categories) category.id: category.name,
+    };
+  }
+
+  String _getCategoryName(
+    String categoryId,
+    Map<String, String> categoryMap,
+  ) {
+    return categoryMap[categoryId] ?? 'Unknown';
+  }
+
+  Widget _buildTransactionTile({
+    required FinanceState state,
+    required TransactionModel item,
+    required String currencySymbol,
+    required BuildContext context,
+    required Map<String, String> categoryMap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final amount = _formatAmount(
+      paisa: item.amountPaisa,
+      currencySymbol: currencySymbol,
+    );
+    final dateLabel = DateFormat('dd MMM yyyy').format(item.date);
+    final categoryName = _getCategoryName(item.categoryId, categoryMap);
+
+    return Dismissible(
+      key: ValueKey<String>(item.id),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) async {
+        return _confirmDelete(item);
+      },
+      onDismissed: (_) {
+        ref.read(financeProvider.notifier).deleteTransaction(item.id);
+      },
+      background: Container(
+        color: colorScheme.error,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: AppTokens.space20),
+        child: const Icon(Icons.delete_outline, color: Colors.white),
+      ),
+      child: EnhancedCard(
+        margin: const EdgeInsets.symmetric(
+          horizontal: AppTokens.space8,
+          vertical: AppTokens.space4,
+        ),
+        padding: EdgeInsets.zero,
+        enableHoverEffect: true,
+        onTap: () {
+          context.push(RoutePaths.financeTransaction(item.id));
+        },
+        child: ListTile(
+          onTap: () {
+            context.push(RoutePaths.financeTransaction(item.id));
+          },
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: AppTokens.space16,
+            vertical: AppTokens.space2,
+          ),
+          leading: CircleAvatar(
+            radius: 18,
+            backgroundColor: colorScheme.surfaceContainerHighest,
+            child: Icon(
+              item.type == 'income' ? Icons.arrow_downward : Icons.arrow_upward,
+              size: 16,
+              color: item.type == 'income'
+                  ? colorScheme.tertiary
+                  : colorScheme.error,
+            ),
+          ),
+          title: Text(item.note.isEmpty ? categoryName : item.note),
+          subtitle: Text('$categoryName - $dateLabel'),
+          trailing: MoneyAmountText(
+            amountText: amount,
+            semanticLabel:
+                '${item.type == 'income' ? 'Income' : 'Expense'} amount $amount',
+            color: item.type == 'income' ? colorScheme.tertiary : colorScheme.error,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleMenuAction(FinanceState state, _FinanceMenuAction action) {
+    switch (action) {
+      case _FinanceMenuAction.summary:
+        context.push(RoutePaths.financeSummary(state.activeMonth));
+        return;
+      case _FinanceMenuAction.budget:
+        context.push(RoutePaths.financeBudget);
+        return;
+      case _FinanceMenuAction.recurring:
+        context.push(RoutePaths.financeRecurring);
+        return;
+    }
+  }
+
+  void _showComposerSheet() {
+    final initialState = ref.read(financeProvider).asData?.value ?? _lastKnownState;
+    if (initialState == null) {
+      return;
+    }
+
+    AppModalSheet.show(
+      context: context,
+      title: 'Add ${initialState.activeType == 'income' ? 'Income' : 'Expense'}',
+      child: StatefulBuilder(
+        builder: (context, setSheetState) {
+          final financeAsync = ref.read(financeProvider);
+          final state = financeAsync.asData?.value ?? _lastKnownState ?? initialState;
+          final canSubmit = _canSubmitEntry(state);
+
+          return FinanceComposerContent(
+            amountController: _amountController,
+            noteController: _noteController,
+            amountFocusNode: _amountFocusNode,
+            categories: state.categories,
+            selectedCategoryId: state.selectedCategory?.id,
+            activeType: state.activeType,
+            entryDate: _composerDate,
+            isBusy: financeAsync.isLoading,
+            canSubmit: canSubmit,
+            amountErrorText: _amountValidationMessage(),
+            lastUsedNote: _lastUsedNoteByType[state.activeType],
+            onReuseLastNote: () {
+              _reuseLastNoteForType(state.activeType);
+              setSheetState(() {});
+            },
+            onCategoryChanged: (value) {
+              ref.read(financeProvider.notifier).selectCategory(value);
+              setSheetState(() {});
+            },
+            onPickDate: () async {
+              await _pickComposerDate();
+              if (mounted) {
+                setSheetState(() {});
+              }
+            },
+            onSetToday: () {
+              _setComposerToday();
+              setSheetState(() {});
+            },
+            onFormChanged: () {
+              setSheetState(() {});
+            },
+            onSubmit: () async {
+              await _submitEntry(state);
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final financeAsync = ref.watch(financeProvider);
+    final liveState = financeAsync.asData?.value;
+    if (liveState != null) {
+      _lastKnownState = liveState;
+    }
+
+    final state = liveState ??
+        _lastKnownState ??
+        FinanceState(activeMonth: DateTime(DateTime.now().year, DateTime.now().month));
+
+    final currencySymbol = ref.watch(currencySymbolProvider);
+    final monthLabel = DateFormat('MMMM yyyy').format(state.activeMonth);
+    final netDisplay = _formatAmount(
+      paisa: state.netBalancePaisa,
+      currencySymbol: currencySymbol,
+    );
+    final quickStats = ref.watch(financeQuickStatsProvider);
+    final activeFilterCount = state.filters.activeCount;
+    final groupedTransactions = ref.watch(financeGroupedTransactionsProvider);
+    final sections = groupedTransactions
+        .map(
+          (group) => FinanceTransactionSection(
+            date: group.date,
+            items: group.items,
+          ),
+        )
+        .toList(growable: false);
+
+    // OPTIMIZATION: Build category map once for O(1) lookups in list items
+    final categoryMap = _buildCategoryMap(state);
+
+    final showInitialLoader =
+        financeAsync.isLoading && _lastKnownState == null && state.transactions.isEmpty;
+    final showRefreshBar = financeAsync.isLoading && _lastKnownState != null;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Finance'),
+        actions: <Widget>[
+          PopupMenuButton<_FinanceMenuAction>(
+            tooltip: 'More',
+            onSelected: (action) {
+              _handleMenuAction(state, action);
+            },
+            itemBuilder: (context) =>
+                const <PopupMenuEntry<_FinanceMenuAction>>[
+                  PopupMenuItem<_FinanceMenuAction>(
+                    value: _FinanceMenuAction.summary,
+                    child: Text('Monthly Summary'),
+                  ),
+                  PopupMenuItem<_FinanceMenuAction>(
+                    value: _FinanceMenuAction.budget,
+                    child: Text('Budget Management'),
+                  ),
+                  PopupMenuItem<_FinanceMenuAction>(
+                    value: _FinanceMenuAction.recurring,
+                    child: Text('Recurring Rules'),
+                  ),
+                ],
+          ),
+          const SizedBox(width: AppTokens.space8),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showComposerSheet,
+        tooltip: 'Add transaction',
+        child: const Icon(Icons.add),
+      ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await ref.read(financeProvider.notifier).refresh();
+        },
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: <Widget>[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppTokens.space16,
+                  AppTokens.space12,
+                  AppTokens.space16,
+                  AppTokens.space8,
+                ),
+                child: Column(
+                  children: <Widget>[
+                    FinanceHeaderBar(
+                      monthLabel: monthLabel,
+                      activeFilterCount: activeFilterCount,
+                      onPreviousMonth: () {
+                        ref.read(financeProvider.notifier).changeMonth(
+                              DateTime(
+                                state.activeMonth.year,
+                                state.activeMonth.month - 1,
+                              ),
+                            );
+                      },
+                      onNextMonth: () {
+                        ref.read(financeProvider.notifier).changeMonth(
+                              DateTime(
+                                state.activeMonth.year,
+                                state.activeMonth.month + 1,
+                              ),
+                            );
+                      },
+                      onFilterTap: () {
+                        context.push(RoutePaths.financeFilter);
+                      },
+                    ),
+                    const SizedBox(height: AppTokens.space12),
+                    SegmentedButton<String>(
+                      segments: const <ButtonSegment<String>>[
+                        ButtonSegment<String>(
+                          value: 'income',
+                          label: Text('Income'),
+                          icon: Icon(Icons.arrow_downward),
+                        ),
+                        ButtonSegment<String>(
+                          value: 'expense',
+                          label: Text('Expense'),
+                          icon: Icon(Icons.arrow_upward),
+                        ),
+                      ],
+                      selected: <String>{state.activeType},
+                      onSelectionChanged: (selection) {
+                        _changeTypeWithSessionMemory(selection.first);
+                      },
+                    ),
+                    const SizedBox(height: AppTokens.space12),
+                    FinanceBalanceCard(
+                      balanceLabel: 'This month net balance',
+                      balancePaisa: state.netBalancePaisa,
+                      currencySymbol: currencySymbol,
+                      balanceText: netDisplay, // Fallback
+                    ),
+                    if (quickStats.transactionCount > 0) ...<Widget>[
+                      const SizedBox(height: AppTokens.space8),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Wrap(
+                          spacing: AppTokens.space8,
+                          runSpacing: AppTokens.space8,
+                          children: <Widget>[
+                            Chip(
+                              avatar: const Icon(Icons.receipt_long_outlined),
+                              label: Text('${quickStats.transactionCount} entries'),
+                            ),
+                            Chip(
+                              avatar: const Icon(Icons.arrow_downward),
+                              label: Text(
+                                'In ${_formatAmount(paisa: quickStats.incomePaisa, currencySymbol: currencySymbol)}',
+                              ),
+                            ),
+                            Chip(
+                              avatar: const Icon(Icons.arrow_upward),
+                              label: Text(
+                                'Out ${_formatAmount(paisa: quickStats.expensePaisa, currencySymbol: currencySymbol)}',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (state.filters.hasAny) ...<Widget>[
+                      const SizedBox(height: AppTokens.space8),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppTokens.space12,
+                            vertical: AppTokens.space8,
+                          ),
+                          child: Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  'Active filters: ${state.filters.activeCount}',
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  ref
+                                      .read(financeProvider.notifier)
+                                      .clearFilters();
+                                },
+                                child: const Text('Clear'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (state.errorMessage != null) ...<Widget>[
+                      const SizedBox(height: AppTokens.space8),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          state.errorMessage!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (showRefreshBar) ...<Widget>[
+                      const SizedBox(height: AppTokens.space8),
+                      const LinearProgressIndicator(),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            if (showInitialLoader)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: AppTokens.space16,
+                    vertical: AppTokens.space12,
+                  ),
+                  child: SkeletonList(
+                    itemCount: 5,
+                    itemHeight: 80,
+                  ),
+                ),
+              )
+            else if (sections.isEmpty)
+              state.filters.hasAny
+                  ? FinanceNoFilterResultsEmptyState(
+                      onClearFiltersTap: () {
+                        ref.read(financeProvider.notifier).clearFilters();
+                      },
+                    )
+                  : FinanceNoTransactionsEmptyState(
+                      onAddFirstTap: _showComposerSheet,
+                    )
+            else
+              FinanceTransactionSectionSliver(
+                sections: sections,
+                itemBuilder: (context, item) {
+                  return _buildTransactionTile(
+                    state: state,
+                    item: item,
+                    currencySymbol: currencySymbol,
+                    context: context,
+                    categoryMap: categoryMap,
+                  );
+                },
+              ),
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: AppTokens.space24 + MediaQuery.of(context).viewInsets.bottom,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

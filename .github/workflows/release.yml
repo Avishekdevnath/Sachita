@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.x"
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-pub
+
+      # -----------------------------------------------------------------------
+      # Signing setup — decodes keystore from secret, writes key.properties
+      # -----------------------------------------------------------------------
+      - name: Setup signing
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/sanchita-release.jks
+          echo "storePassword=${{ secrets.STORE_PASSWORD }}"  >> android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}"      >> android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}"            >> android/key.properties
+          echo "storeFile=../sanchita-release.jks"            >> android/key.properties
+
+      # -----------------------------------------------------------------------
+      # Build
+      # -----------------------------------------------------------------------
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Rename APK
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             build/app/outputs/flutter-apk/sanchita.apk || \
+          cp build/app/outputs/flutter-apk/sanchita.apk \
+             build/app/outputs/flutter-apk/sanchita.apk || true
+
+      # -----------------------------------------------------------------------
+      # Extract version from tag (v1.2.3 → 1.2.3)
+      # -----------------------------------------------------------------------
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # -----------------------------------------------------------------------
+      # Update version.json and commit back to main
+      # -----------------------------------------------------------------------
+      - name: Update version.json
+        run: |
+          cat > version.json << EOF
+          {
+            "latest_version": "${{ steps.version.outputs.VERSION }}",
+            "min_required_version": "${{ steps.version.outputs.VERSION }}",
+            "apk_url": "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/sanchita.apk",
+            "release_notes": "Release ${{ github.ref_name }}"
+          }
+          EOF
+
+      - name: Commit version.json
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          git commit -m "chore: bump version.json to ${{ steps.version.outputs.VERSION }} [skip ci]"
+          git push origin HEAD:main
+
+      # -----------------------------------------------------------------------
+      # Create GitHub Release and upload APK
+      # -----------------------------------------------------------------------
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Sanchita ${{ github.ref_name }}"
+          body: |
+            ## Sanchita ${{ github.ref_name }}
+
+            Download `sanchita.apk` below and install on your Android device.
+
+            > Enable **Install from unknown sources** in Android settings if prompted.
+          files: build/app/outputs/flutter-apk/sanchita.apk
+          draft: false
+          prerelease: false
