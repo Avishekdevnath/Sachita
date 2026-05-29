@@ -55,6 +55,10 @@ ios/Runner.xcworkspace/xcshareddata/
 releases/*.apk
 releases/*.sha256
 
+# Claude Code project files - local only
+# ============================================================================
+.claude/
+
 # Security & Credentials - NEVER COMMIT THESE
 # ============================================================================
 .env
