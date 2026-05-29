@@ -87,6 +87,8 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Discard build-time modifications (gradle.properties, pubspec.lock) so rebase is clean
+          git checkout -- . || true
           git fetch origin main
           git checkout main
           git pull --rebase origin main
