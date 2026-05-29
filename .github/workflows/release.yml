@@ -99,6 +99,7 @@ jobs:
       # Create GitHub Release and upload APK
       # -----------------------------------------------------------------------
       - name: Create GitHub Release
+        if: always()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
