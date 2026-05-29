@@ -22,6 +22,7 @@ class FinanceTransactionViewTabs extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
+      key: const ValueKey<String>('finance-view-tabs'),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(

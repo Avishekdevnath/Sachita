@@ -72,6 +72,7 @@ class _FinanceBalanceCardState extends State<FinanceBalanceCard> {
       ),
       padding: const EdgeInsets.all(AppTokens.space20),
       child: Column(
+        key: const ValueKey<String>('finance-balance-card-content'),
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[

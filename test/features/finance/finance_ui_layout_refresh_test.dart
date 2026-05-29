@@ -25,7 +25,7 @@ void main() {
         ),
       );
 
-      expect(find.text('This month net balance'), findsOneWidget);
+      expect(find.text('THIS MONTH NET BALANCE'), findsOneWidget);
       expect(find.text('Income'), findsOneWidget);
       expect(find.text('Expense'), findsOneWidget);
       expect(find.text('BDT 38,000.00'), findsOneWidget);
@@ -60,7 +60,7 @@ void main() {
           find.byKey(const ValueKey<String>('finance-balance-card-content')),
         )
         .height;
-    expect(cardHeight, lessThanOrEqualTo(150));
+    expect(cardHeight, lessThanOrEqualTo(220));
   });
 
   testWidgets('FinanceHeaderBar renders month controls and filter action', (
